@@ -399,6 +399,16 @@ void LFGMgr::JoinLfg(Player* player, uint8 roles, LfgDungeonSet& dungeons, const
     if (!player || !player->GetSession() || dungeons.empty())
         return;
 
+    // check classes for permitted roles
+    if (!(LfgRoleClasses::TANK & player->GetClassMask()))
+    {
+        roles &= ~PLAYER_ROLE_TANK;
+    }
+    if (!(LfgRoleClasses::HEALER & player->GetClassMask()))
+    {
+        roles &= ~PLAYER_ROLE_HEALER;
+    }
+
     // At least 1 role must be selected
     if (!(roles & (PLAYER_ROLE_TANK | PLAYER_ROLE_HEALER | PLAYER_ROLE_DAMAGE)))
         return;

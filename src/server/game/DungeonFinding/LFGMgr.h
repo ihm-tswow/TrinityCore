@@ -128,6 +128,12 @@ enum LfgRoleCheckState
     LFG_ROLECHECK_NO_ROLE                        = 6       // Someone selected no role
 };
 
+// Permitted classes for each role
+enum LfgRoleClasses {
+    TANK   = 0b10000100011, // warrior, paladin, dk, druid
+    HEALER = 0b10001010010, // paladin, priest, shaman, druid
+};
+
 // Forward declaration (just to have all typedef together)
 struct LFGDungeonData;
 struct LfgReward;

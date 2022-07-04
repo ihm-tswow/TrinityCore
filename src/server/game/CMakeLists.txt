@@ -46,11 +46,13 @@ add_library(game
 
 target_include_directories(game
   PRIVATE
+    ${tracy_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR})
 
 target_link_libraries(game
   PRIVATE
     trinity-core-interface
+    TracyClient
     efsw
   PUBLIC
     game-interface)

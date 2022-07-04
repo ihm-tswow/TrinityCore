@@ -89,6 +89,7 @@
 #include "WhoListStorage.h"
 #include "WorldSession.h"
 
+#include <Tracy.hpp>
 #include <boost/asio/ip/address.hpp>
 
 TC_GAME_API std::atomic<bool> World::m_stopEvent(false);
@@ -2312,6 +2313,8 @@ void World::LoadAutobroadcasts()
 /// Update the World !
 void World::Update(uint32 diff)
 {
+    FrameMark
+    ZoneScoped
     TC_METRIC_TIMER("world_update_time_total");
     ///- Update the game time and check for shutdown time
     _UpdateGameTime();

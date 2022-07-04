@@ -48,6 +48,9 @@
 #include "Weather.h"
 #include "WeatherMgr.h"
 #include "World.h"
+
+#include "Profiling.h"
+
 #include <unordered_set>
 #include <vector>
 
@@ -758,6 +761,7 @@ void Map::UpdatePlayerZoneStats(uint32 oldZone, uint32 newZone)
 
 void Map::Update(uint32 t_diff)
 {
+    ZoneScoped
     _dynamicTree.update(t_diff);
     /// update worldsessions for existing players
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
@@ -775,6 +779,7 @@ void Map::Update(uint32 t_diff)
     /// process any due respawns
     if (_respawnCheckTimer <= t_diff)
     {
+        ZoneScopedN("ProcessRespawns")
         ProcessRespawns();
         _respawnCheckTimer = sWorld->getIntConfig(CONFIG_RESPAWN_MINCHECKINTERVALMS);
     }
@@ -870,7 +875,10 @@ void Map::Update(uint32 t_diff)
         obj->Update(t_diff);
     }
 
-    SendObjectUpdates();
+    {
+        ZoneScopedN("SendObjectUpdates")
+        SendObjectUpdates();
+    }
 
     ///- Process necessary scripts
     if (!m_scriptSchedule.empty())
@@ -905,6 +913,11 @@ void Map::Update(uint32 t_diff)
     TC_METRIC_VALUE("map_gameobjects", uint64(GetObjectsStore().Size<GameObject>()),
         TC_METRIC_TAG("map_id", std::to_string(GetId())),
         TC_METRIC_TAG("map_instanceid", std::to_string(GetInstanceId())));
+
+    if (GetId() == 571)
+    {
+        TracyPlot("CreatureCount", int64(GetObjectsStore().Size<Creature>()));
+    }
 }
 
 struct ResetNotifier
@@ -921,6 +934,7 @@ struct ResetNotifier
 
 void Map::ProcessRelocationNotifies(const uint32 diff)
 {
+    ZoneScopedN("ProcessRelocationNotifies")
     for (GridRefManager<NGridType>::iterator i = GridRefManager<NGridType>::begin(); i != GridRefManager<NGridType>::end(); ++i)
     {
         NGridType *grid = i->GetSource();
@@ -957,7 +971,6 @@ void Map::ProcessRelocationNotifies(const uint32 diff)
             }
         }
     }
-
     ResetNotifier reset;
     TypeContainerVisitor<ResetNotifier, GridTypeMapContainer >  grid_notifier(reset);
     TypeContainerVisitor<ResetNotifier, WorldTypeMapContainer > world_notifier(reset);

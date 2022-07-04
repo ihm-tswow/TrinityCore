@@ -10,12 +10,32 @@
 
 cmake_minimum_required(VERSION 3.11)
 
+include(FetchContent)
+
 # add this options before PROJECT keyword
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 
 # Set projectname (must be done AFTER setting configurationtypes)
 project(TrinityCore)
+
+#
+# tracy
+#
+SET(TRACY_ON_DEMAND ON CACHE BOOL "")
+FetchContent_Declare (
+  tracy
+  GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+  GIT_TAG 80f6a93da79af94fc4604e37439f5a75d5e7dfbd
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable (tracy)
+target_compile_definitions(TracyClient
+  PRIVATE
+  TRACY_DATA_PORT=8084
+  TRACY_ON_DEMAND=1
+)
 
 # CMake policies (can not be handled elsewhere)
 cmake_policy(SET CMP0005 NEW)

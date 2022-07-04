@@ -15,6 +15,7 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "Profiling.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "WorldPacket.h"
@@ -204,6 +205,7 @@ void CreatureRelocationNotifier::Visit(CreatureMapType &m)
 
 void DelayedUnitRelocation::Visit(CreatureMapType &m)
 {
+    PROF_SUM(DELAYED_UNIT_RELOCATION_VISIT)
     for (CreatureMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
     {
         Creature* unit = iter->GetSource();

@@ -200,6 +200,10 @@ add_subdirectory(dep)
 # add core sources
 add_subdirectory(src)
 
+# tswow-begin botting
+add_subdirectory(../../misc/bots bots)
+# tswow-end
+
 include(CTest)
 if(BUILD_TESTING)
   list(APPEND CMAKE_MODULE_PATH

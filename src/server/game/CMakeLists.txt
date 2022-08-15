@@ -8,6 +8,23 @@
 # WITHOUT ANY WARRANTY, to the extent permitted by law; without even the
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
+include(FetchContent)
+SET(TRACY_ON_DEMAND ON CACHE BOOL "")
+SET(TRACY_CALLSTACK ON CACHE BOOL "")
+FetchContent_Declare (
+  tracy
+  GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+  GIT_TAG 80f6a93da79af94fc4604e37439f5a75d5e7dfbd
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable (tracy)
+target_compile_definitions(TracyClient
+  PRIVATE
+  TRACY_DATA_PORT=8084
+  TRACY_ON_DEMAND=1
+)
+
 CollectSourceFiles(
   ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE_SOURCES
@@ -53,6 +70,7 @@ target_link_libraries(game
     trinity-core-interface
     efsw
   PUBLIC
+    TracyClient
     game-interface)
 
 set_target_properties(game

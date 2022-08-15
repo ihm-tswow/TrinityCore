@@ -15,6 +15,11 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define DISABLE_LEARN_SKILL_REWARDS 1
+#define FASTER_ABILITY_LOOKUP 1
+#define DISABLE_NAME_CHECKING 1
+#define DISABLE_ACHIEVEMENT_CRITERIA_CHECK 1
+#include "Tracy.hpp"
 #include "Player.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
@@ -17142,6 +17147,7 @@ bool Player::IsLoading() const
 
 bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& holder)
 {
+    ZoneScoped;
     //                                                       0     1        2     3     4      5       6      7   8      9     10    11         12         13           14         15         16
     //QueryResult* result = CharacterDatabase.PQuery("SELECT guid, account, name, race, class, gender, level, xp, money, skin, face, hairStyle, hairColor, facialStyle, bankSlots, restState, playerFlags, "
     // 17          18          19          20   21           22        23         24         25         26          27           28                 29
@@ -17184,14 +17190,21 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
     m_name = fields[2].GetString();
 
     // check name limitations
-    if (ObjectMgr::CheckPlayerName(m_name, GetSession()->GetSessionDbcLocale()) != CHAR_NAME_SUCCESS ||
-        (!GetSession()->HasPermission(rbac::RBAC_PERM_SKIP_CHECK_CHARACTER_CREATION_RESERVEDNAME) && sObjectMgr->IsReservedName(m_name)))
     {
-        CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_ADD_AT_LOGIN_FLAG);
-        stmt->setUInt16(0, uint16(AT_LOGIN_RENAME));
-        stmt->setUInt32(1, guid.GetCounter());
-        CharacterDatabase.Execute(stmt);
-        return false;
+        ZoneScopedN("NameStuff");
+#if DISABLE_NAME_CHECKING
+        if (
+#else
+        if (ObjectMgr::CheckPlayerName(m_name, GetSession()->GetSessionDbcLocale()) != CHAR_NAME_SUCCESS ||
+#endif
+            (!GetSession()->HasPermission(rbac::RBAC_PERM_SKIP_CHECK_CHARACTER_CREATION_RESERVEDNAME) && sObjectMgr->IsReservedName(m_name)))
+        {
+            CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_ADD_AT_LOGIN_FLAG);
+            stmt->setUInt16(0, uint16(AT_LOGIN_RENAME));
+            stmt->setUInt32(1, guid.GetCounter());
+            CharacterDatabase.Execute(stmt);
+            return false;
+        }
     }
 
     Gender gender = Gender(fields[5].GetUInt8());
@@ -17861,7 +17874,12 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
 
     _LoadDeclinedNames(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_DECLINED_NAMES));
 
-    m_achievementMgr->CheckAllAchievementCriteria();
+    {
+        ZoneScopedN("AchievementMgr::CheckAllAchievementCriteria");
+#if !DISABLE_ACHIEVEMENT_CRITERIA_CHECK
+        m_achievementMgr->CheckAllAchievementCriteria();
+#endif
+    }
 
     _LoadEquipmentSets(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_EQUIPMENT_SETS));
 
@@ -23151,14 +23169,27 @@ void Player::LearnQuestRewardedSpells()
 
 void Player::LearnSkillRewardedSpells(uint32 skillId, uint32 skillValue)
 {
+    ZoneScoped;
+#if DISABLE_LEARN_SKILL_REWARDS
+    return;
+#endif
     uint32 raceMask  = GetRaceMask();
     uint32 classMask = GetClassMask();
+
+#if FASTER_ABILITY_LOOKUP
+    std::vector<SkillLineAbilityEntry const*>* abilities = GetAbilitiesBySkillLine(skillId);
+    if (!abilities)
+        return;
+
+    for (SkillLineAbilityEntry const* ability : *abilities)
+    {
+#else
     for (uint32 j = 0; j < sSkillLineAbilityStore.GetNumRows(); ++j)
     {
         SkillLineAbilityEntry const* ability = sSkillLineAbilityStore.LookupEntry(j);
         if (!ability || ability->SkillLine != skillId)
-            continue;
-
+             continue;
+#endif
         if (!sSpellMgr->GetSpellInfo(ability->Spell))
             continue;
 
@@ -24950,6 +24981,7 @@ bool Player::CanFlyInZone(uint32 mapid, uint32 zone, SpellInfo const* bySpell) c
 
 void Player::_LoadSkills(PreparedQueryResult result)
 {
+    ZoneScoped;
     //                                                           0      1      2
     // SetPQuery(PLAYER_LOGIN_QUERY_LOADSKILLS,          "SELECT skill, value, max FROM character_skills WHERE guid = '%u'", GUID_LOPART(m_guid));
 

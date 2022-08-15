@@ -19,6 +19,7 @@
     \ingroup world
 */
 
+#include "Tracy.hpp"
 #include "World.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
@@ -2312,6 +2313,7 @@ void World::LoadAutobroadcasts()
 /// Update the World !
 void World::Update(uint32 diff)
 {
+    ZoneScoped;
     TC_METRIC_TIMER("world_update_time_total");
     ///- Update the game time and check for shutdown time
     _UpdateGameTime();
@@ -2580,6 +2582,7 @@ void World::Update(uint32 diff)
         sMetric->Update();
         TC_METRIC_VALUE("update_time_diff", diff);
     }
+    FrameMark;
 }
 
 void World::ForceGameEventUpdate()

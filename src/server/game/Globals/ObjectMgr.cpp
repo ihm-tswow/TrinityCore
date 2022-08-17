@@ -56,6 +56,9 @@
 #include "Vehicle.h"
 #include "World.h"
 
+#include <boost/asio/thread_pool.hpp>
+#include <boost/asio/post.hpp>
+
 ScriptMapMap sSpellScripts;
 ScriptMapMap sEventScripts;
 ScriptMapMap sWaypointScripts;
@@ -10381,30 +10384,59 @@ void ObjectMgr::InitializeQueriesData(QueryDataGroup mask)
         return;
     }
 
+    boost::asio::thread_pool pool;
+
     // Initialize Query data for creatures
     if (mask & QUERY_DATA_CREATURES)
         for (auto& creatureTemplatePair : _creatureTemplateStore)
-            creatureTemplatePair.second.InitializeQueryData();
+        {
+            CreatureTemplate* creature = &creatureTemplatePair.second;
+            boost::asio::post([creature]() {
+                creature->InitializeQueryData();
+            });
+        }
 
     // Initialize Query Data for gameobjects
     if (mask & QUERY_DATA_GAMEOBJECTS)
         for (auto& gameObjectTemplatePair : _gameObjectTemplateStore)
-            gameObjectTemplatePair.second.InitializeQueryData();
+        {
+            GameObjectTemplate* gobj = &gameObjectTemplatePair.second;
+            boost::asio::post([gobj]() {
+                gobj->InitializeQueryData();
+            });
+        }
 
     // Initialize Query Data for items
     if (mask & QUERY_DATA_ITEMS)
         for (auto& itemTemplatePair : _itemTemplateStore)
-            itemTemplatePair.second.InitializeQueryData();
+        {
+            ItemTemplate* item = &itemTemplatePair.second;
+            boost::asio::post([item]() {
+                item->InitializeQueryData();
+            });
+        }
 
     // Initialize Query Data for quests
     if (mask & QUERY_DATA_QUESTS)
         for (auto& questTemplatePair : _questTemplates)
-            questTemplatePair.second.InitializeQueryData();
+        {
+            Quest* quest = &questTemplatePair.second;
+            boost::asio::post([quest]() {
+                quest->InitializeQueryData();
+            });
+        }
 
     // Initialize Quest POI data
     if (mask & QUERY_DATA_POIS)
         for (auto& poiWrapperPair : _questPOIStore)
-            poiWrapperPair.second.InitializeQueryData();
+        {
+            QuestPOIWrapper* poi = &poiWrapperPair.second;
+            boost::asio::post([poi]() {
+                poi->InitializeQueryData();
+            });
+        }
+
+    pool.join();
 
     TC_LOG_INFO("server.loading", ">> Initialized query cache data in %u ms", GetMSTimeDiffToNow(oldMSTime));
 }

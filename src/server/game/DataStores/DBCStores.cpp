@@ -27,6 +27,9 @@
 #include "SpellMgr.h"
 #include "Timer.h"
 
+#include <boost/asio/thread_pool.hpp>
+#include <boost/asio/post.hpp>
+
 // temporary hack until includes are sorted out (don't want to pull in Windows.h)
 #ifdef GetClassName
 #undef GetClassName
@@ -137,7 +140,8 @@ DBCStorage <MovieEntry> sMovieStore(MovieEntryfmt);
 
 DBCStorage<NamesProfanityEntry> sNamesProfanityStore(NamesProfanityEntryfmt);
 DBCStorage<NamesReservedEntry> sNamesReservedStore(NamesReservedEntryfmt);
-typedef std::array<std::vector<Trinity::wregex>, TOTAL_LOCALES> NameValidationRegexContainer;
+// invariant: any function adding empty optionals to this must fill them before exiting
+typedef std::array<std::vector<std::optional<Trinity::wregex>>, TOTAL_LOCALES> NameValidationRegexContainer;
 NameValidationRegexContainer NamesProfaneValidators;
 NameValidationRegexContainer NamesReservedValidators;
 
@@ -269,6 +273,71 @@ inline void LoadDBC(uint32& availableDbcLocales, StoreProblemList& errors, DBCSt
     }
 }
 
+template <typename T>
+void BuildNameValidationContainer(DBCStorage<T>& dbc, NameValidationRegexContainer& container)
+{
+    std::array<uint32, TOTAL_LOCALES> curLocales{};
+    std::vector<std::array<uint32, TOTAL_LOCALES>> localeIndices;
+    localeIndices.resize(dbc.GetNumRows());
+    boost::asio::thread_pool pool;
+
+    {
+        // Calculate preallocated space
+        for (uint32 i = 0; i < dbc.GetNumRows(); ++i)
+        {
+            T const* entry = dbc.LookupEntry(i);
+            if (!entry)
+            {
+                continue;
+            }
+            ASSERT(entry->Language < TOTAL_LOCALES || entry->Language == -1);
+            if (entry->Language != -1)
+            {
+                localeIndices[i][entry->Language] = curLocales[entry->Language]++;
+            }
+            else
+            {
+                for (uint32 j = 0; j < TOTAL_LOCALES; ++j)
+                {
+                    localeIndices[i][j] = curLocales[j]++;
+                }
+            }
+        }
+    }
+
+    // Preallocate space
+    {
+        for (uint32 i = 0; i < TOTAL_LOCALES; ++i)
+        {
+            container[i].resize(curLocales[i]);
+        }
+    }
+
+    // Build regex in pools without locks
+    {
+        for (uint32 i = 0; i < dbc.GetNumRows(); ++i)
+        {
+            boost::asio::post(pool, [i, &localeIndices, &dbc, &container]() {
+                T const* entry = dbc.LookupEntry(i);
+                if (!entry)
+                {
+                    return;
+                }
+                std::wstring wname;
+                bool conversionResult = Utf8toWStr(entry->Name, wname);
+                ASSERT(conversionResult);
+                if (entry->Language != -1)
+                    container[entry->Language][localeIndices[i][entry->Language]].emplace(Trinity::wregex(wname, Trinity::regex::perl | Trinity::regex::icase | Trinity::regex::optimize));
+                else
+                    for (uint32 j = 0; j < TOTAL_LOCALES; ++j)
+                        container[j][localeIndices[i][j]].emplace(Trinity::wregex(wname, Trinity::regex::perl | Trinity::regex::icase | Trinity::regex::optimize));
+                });
+        }
+    }
+
+    pool.join();
+}
+
 void LoadDBCStores(const std::string& dataPath)
 {
     uint32 oldMSTime = getMSTime();
@@ -278,7 +347,9 @@ void LoadDBCStores(const std::string& dataPath)
     StoreProblemList bad_dbc_files;
     uint32 availableDbcLocales = 0xFFFFFFFF;
 
-#define LOAD_DBC(store, file) LoadDBC(availableDbcLocales, bad_dbc_files, store, dbcPath, file)
+    boost::asio::thread_pool loadPool;
+
+#define LOAD_DBC(store, file) boost::asio::post(loadPool,[&]{LoadDBC(availableDbcLocales, bad_dbc_files, store, dbcPath, file);})
 
     LOAD_DBC(sAreaTableStore,                     "AreaTable.dbc");
     LOAD_DBC(sAchievementCriteriaStore,           "Achievement_Criteria.dbc");
@@ -397,6 +468,8 @@ void LoadDBCStores(const std::string& dataPath)
 
 #undef LOAD_DBC
 
+    loadPool.join();
+
 #define LOAD_DBC_EXT(store, file, dbtable, dbformat, dbpk) LoadDBC(availableDbcLocales, bad_dbc_files, store, dbcPath, file, dbtable, dbformat, dbpk)
 
     LOAD_DBC_EXT(sAchievementStore,     "Achievement.dbc",      "achievement_dbc",      CustomAchievementfmt,     CustomAchievementIndex);
@@ -442,33 +515,8 @@ void LoadDBCStores(const std::string& dataPath)
     for (MapDifficultyEntry const* entry : sMapDifficultyStore)
         sMapDifficultyMap[MAKE_PAIR32(entry->MapID, entry->Difficulty)] = MapDifficulty(entry->RaidDuration, entry->MaxPlayers, entry->Message[0] != '\0');
 
-    for (NamesProfanityEntry const* namesProfanity : sNamesProfanityStore)
-    {
-        ASSERT(namesProfanity->Language < TOTAL_LOCALES || namesProfanity->Language == -1);
-        std::wstring wname;
-        bool conversionResult = Utf8toWStr(namesProfanity->Name, wname);
-        ASSERT(conversionResult);
-
-        if (namesProfanity->Language != -1)
-            NamesProfaneValidators[namesProfanity->Language].emplace_back(wname, Trinity::regex::perl | Trinity::regex::icase | Trinity::regex::optimize);
-        else
-            for (uint32 i = 0; i < TOTAL_LOCALES; ++i)
-                NamesProfaneValidators[i].emplace_back(wname, Trinity::regex::perl | Trinity::regex::icase | Trinity::regex::optimize);
-    }
-
-    for (NamesReservedEntry const* namesReserved : sNamesReservedStore)
-    {
-        ASSERT(namesReserved->Language < TOTAL_LOCALES || namesReserved->Language == -1);
-        std::wstring wname;
-        bool conversionResult = Utf8toWStr(namesReserved->Name, wname);
-        ASSERT(conversionResult);
-
-        if (namesReserved->Language != -1)
-            NamesReservedValidators[namesReserved->Language].emplace_back(wname, Trinity::regex::perl | Trinity::regex::icase | Trinity::regex::optimize);
-        else
-            for (uint32 i = 0; i < TOTAL_LOCALES; ++i)
-                NamesReservedValidators[i].emplace_back(wname, Trinity::regex::perl | Trinity::regex::icase | Trinity::regex::optimize);
-    }
+    BuildNameValidationContainer(sNamesProfanityStore, NamesProfaneValidators);
+    BuildNameValidationContainer(sNamesReservedStore, NamesReservedValidators);
 
     for (PvPDifficultyEntry const* entry : sPvPDifficultyStore)
     {
@@ -958,13 +1006,13 @@ ResponseCodes ValidateName(std::wstring const& name, LocaleConstant locale)
     if (locale >= TOTAL_LOCALES)
         return RESPONSE_FAILURE;
 
-    for (Trinity::wregex const& regex : NamesProfaneValidators[locale])
-        if (Trinity::regex_search(name, regex))
+    for (std::optional<Trinity::wregex> const& regex : NamesProfaneValidators[locale])
+        if (Trinity::regex_search(name, regex.value()))
             return CHAR_NAME_PROFANE;
 
     // regexes at TOTAL_LOCALES are loaded from NamesReserved which is not locale specific
-    for (Trinity::wregex const& regex : NamesReservedValidators[locale])
-        if (Trinity::regex_search(name, regex))
+    for (std::optional<Trinity::wregex> const& regex : NamesReservedValidators[locale])
+        if (Trinity::regex_search(name, regex.value()))
             return CHAR_NAME_RESERVED;
 
     return CHAR_NAME_SUCCESS;

@@ -788,7 +788,10 @@ void Map::Update(uint32 t_diff)
     _dynamicTree.update(t_diff);
 
     {
-        ZoneScopedNC("UpdateWorldSessions", MAP_UPDATE_COLOR)
+        ZoneScopedNC("UpdateWorldSessions", MAP_UPDATE_COLOR);
+        uint64_t start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        std::map<uint32, uint32> opcode_map;
+
         /// update worldsessions for existing players
         for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
         {
@@ -798,8 +801,27 @@ void Map::Update(uint32 t_diff)
                 //player->Update(t_diff);
                 WorldSession* session = player->GetSession();
                 MapSessionFilter updater(session);
-                session->Update(t_diff, updater);
+                session->Update(t_diff, updater, opcode_map);
             }
+        }
+        uint64_t end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        if (end - start > 250)
+        {
+            using opcode_pair = std::pair<uint32, uint32>;
+            std::vector<opcode_pair> pairs;
+            for (auto const& pair : opcode_map)
+            {
+                pairs.push_back(pair);
+            }
+            std::sort(pairs.begin(), pairs.end(), [](opcode_pair const& p1, opcode_pair const& p2) { return p1.second > p2.second; });
+            std::stringstream ss;
+            ss << "UpdateMapSessions took very long:  ";
+            for (auto const& [opcode, count] : pairs)
+            {
+                ss << opcode << ": " << count << ",     ";
+            }
+            std::string str = ss.str();
+            TracyMessage(str.c_str(), str.size());
         }
     }
 

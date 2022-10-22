@@ -32,6 +32,7 @@ class TC_GAME_API AuraEffect
 {
     // @tswow-begin
     TSEntity m_tsEntity;
+    friend class TSAuraEffect;
     // @tswow-end
 
     friend void Aura::_InitEffects(uint8 effMask, Unit* caster, int32 const* baseAmount);

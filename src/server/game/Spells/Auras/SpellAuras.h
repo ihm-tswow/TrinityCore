@@ -49,6 +49,7 @@ class TC_GAME_API AuraApplication
 {
     // @tswow-begin
     TSEntity m_tsEntity;
+    friend class TSAuraApplication;
     // @tswow-end
 
     friend class Unit;
@@ -109,6 +110,7 @@ class TC_GAME_API Aura
     public:
         // @tswow-begin
         TSEntity m_tsEntity;
+        friend class TSAura;
         // @tswow-end
 
         typedef std::unordered_map<ObjectGuid, AuraApplication*> ApplicationMap;
